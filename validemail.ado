@@ -160,13 +160,22 @@ program define validemail
     di as smcl `"{hline}"'
     di as text "Email Validation Report for {bf:`varlist'}"
     di as text "Status codes in {bf:`generate'}:"
-    di as text "  0: Invalid format: " _col(25) as result `=(count(`generate') if `generate'==0)'
-    di as text "  1: Valid format, DNS/MX fail: " _col(25) as result `=(count(`generate') if `generate'==1)'
-    di as text "  2: Valid format, DNS/MX pass: " _col(25) as result `=(count(`generate') if `generate'==2)'
-    di as text "  3: Valid format, Disposable: " _col(25) as result `=(count(`generate') if `generate'==3)'
+    
+    qui count if `generate' == 0
+    di as text "  0: Invalid format: " _col(35) as result r(N)
+    
+    qui count if `generate' == 1
+    di as text "  1: Valid format, DNS/MX fail: " _col(35) as result r(N)
+    
+    qui count if `generate' == 2
+    di as text "  2: Valid format, DNS/MX pass: " _col(35) as result r(N)
+    
+    qui count if `generate' == 3
+    di as text "  3: Valid format, Disposable: " _col(35) as result r(N)
     di as smcl `"{hline}"'
 
     if "`mergereport'" != "" {
+        capture label drop evstatus
         label define evstatus 0 "Invalid Format" 1 "DNS Fail" 2 "Valid" 3 "Disposable"
         label values `generate' evstatus
         tab `generate'
