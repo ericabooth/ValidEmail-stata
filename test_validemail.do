@@ -5,9 +5,10 @@
 clear
 set more off
 
-* Ensure we are using the local version of the ado file
-cap adopath + "/Users/ebooth/Documents/GitHub/ValidEmail-stata"
+* Force Stata to use the local version in this folder FIRST
+cap adopath ++ "/Users/ebooth/Documents/GitHub/ValidEmail-stata"
 cap program drop validemail
+which validemail
 
 * 1. Create dummy data with various email formats
 input str60 email
