@@ -1,15 +1,6 @@
 *! validemail.ado  Email Validation via Regex, DNS/MX Check, and Disposable Domain Detection
-*! version 2.1.0  2026-06-13
+*! version 2.1.1  2024-06-13
 *! Eric A. Booth <eric.a.booth@gmail.com>
-*! 
-*! Syntax:  
-*!     validemail varname [, GENerate(name) DNS(name) MX IP(name) DISPOSable(name) Mergereport regex(string) lowercase] 
-*! 
-*! Status codes in GENerate():
-*!     0: Invalid format (Regex failed)
-*!     1: Valid format, DNS/MX check failed
-*!     2: Valid format, DNS/MX check passed
-*!     3: Valid format, DNS/MX passed, but domain is in disposable list
 
 cap program drop validemail
 program define validemail
@@ -31,7 +22,7 @@ program define validemail
         }
     }
 
-    * Default Regex (RFC 5322 compliant-ish but manageable)
+    * Default Regex
     if `"`regex'"' == "" {
         loc regex "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     }
@@ -79,23 +70,24 @@ program define validemail
         keep if `generate' == 1
         keep `dns'
         duplicates drop `dns', force
-        tempvar domain_id
-        g `domain_id' = _n
+        
         loc n_domains = _N
         
         if `n_domains' > 0 {
+            * 1. Store domain names in locals to survive 'clear'
+            forval i = 1/`n_domains' {
+                loc d`i' = `dns'[`i']
+            }
+
             noi di as text "Checking DNS/MX for `n_domains' unique domains..."
             
+            * 2. Run nslookup for each domain
             forval i = 1/`n_domains' {
-                loc d_name = `dns'[`i']
+                loc d_name = `"`d`i''"'
                 loc type = cond("`mx'" != "", "-type=MX", "")
                 
-                if `"`c(os)'"' == "MacOSX" | `"`c(os)'"' == "Unix" {
-                    !nslookup `type' `d_name' > "`email_results'_`i'.txt"
-                }
-                else if `"`c(os)'"' == "Windows" {
-                    !nslookup `type' `d_name' > "`email_results'_`i'.txt"
-                }
+                * Use shell command with redirection
+                qui !nslookup `type' `d_name' > "`email_results'_`i'.txt"
                 
                 * Progress
                 if mod(`i', 5) == 0 | `i' == `n_domains' {
@@ -104,16 +96,10 @@ program define validemail
             }
             noi di ""
             
-            * Process results
-            clear
-            set obs 0
-            g `dns' = ""
-            g `ip' = ""
-            g dns_valid = 0
-            
             * 3. Process results into a temp file using postfile
             tempname memhold
             tempfile master_dns
+            * Use str240 to be safe for domain and IP
             postfile `memhold' str240 `dns' str240 `ip' dns_valid using `master_dns', replace
 
             forval i = 1/`n_domains' {
@@ -126,11 +112,10 @@ program define validemail
                 if !_rc & _N > 0 {
                     forval j = 1/`=_N' {
                         loc line = v1[`j']
-                        if strpos("`line'", "Name:") {
-                            * do nothing for now, just identifying record
-                        }
                         if strpos("`line'", "Address:") {
                             loc ip_current = trim(subinstr("`line'", "Address:", "", 1))
+                            * Some nslookup outputs include #port
+                            if strpos("`ip_current'", "#") loc ip_current = trim(word("`ip_current'", 1))
                             loc valid = 1
                         }
                         if strpos("`line'", "mail exchanger") {
@@ -138,7 +123,7 @@ program define validemail
                         }
                     }
                     
-                    * Fallback check for any success indicators if Name/Address not found
+                    * Fallback if no specific tags found but lookup wasn't an error
                     if `valid' == 0 {
                         count if strpos(v1, "NXDOMAIN")
                         if r(N) == 0 {
@@ -153,25 +138,25 @@ program define validemail
             }
             postclose `memhold'
             
-            * Load the results and finalize the dns_list
+            * Load the results and save to dns_list
             use `master_dns', clear
             duplicates drop `dns', force
             save "`dns_list'", replace
         }
         restore
         
-        * Merge back
-        merge m:1 `dns' using "`dns_list'", nogenerate keep(master match)
-        
-        * Update Status
-        replace `generate' = 2 if `generate' == 1 & dns_valid == 1
-        replace `generate' = 3 if `generate' == 2 & `disposable' == 1
-        
-        * Clean up intermediate variables
-        drop dns_valid
+        * Merge results back to main dataset
+        if `n_domains' > 0 {
+            merge m:1 `dns' using "`dns_list'", nogenerate keep(master match)
+            
+            * Update Status
+            replace `generate' = 2 if `generate' == 1 & dns_valid == 1
+            replace `generate' = 3 if `generate' == 2 & `disposable' == 1
+            drop dns_valid
+        }
     }
 
-    * Report
+    * Report results
     di as smcl `"{hline}"'
     di as text "Email Validation Report for {bf:`varlist'}"
     di as text "Status codes in {bf:`generate'}:"
@@ -187,6 +172,6 @@ program define validemail
         tab `generate'
     }
 
-    * Cleanup temp files
+    * Cleanup temporary files
     cap shell rm "`email_results'_*.txt"
 end
