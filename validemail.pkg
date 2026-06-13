@@ -1,0 +1,10 @@
+v 3
+d validemail. Email validation via Regex, DNS/MX Check, and Disposable Domain Detection
+d Eric A. Booth, eric.a.booth@gmail.com
+d
+d validemail provides a multi-stage validation for email address variables. 
+d It performs Regex format checks, Disposable email detection, 
+d and DNS/MX record verification.
+d
+f validemail.ado
+f validemail.sthlp
