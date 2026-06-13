@@ -111,19 +111,23 @@ program define validemail
             g `ip' = ""
             g dns_valid = 0
             
+            * 3. Process results into a temp file using postfile
+            tempname memhold
+            tempfile master_dns
+            postfile `memhold' str240 `dns' str240 `ip' dns_valid using `master_dns', replace
+
             forval i = 1/`n_domains' {
-                loc d_name = `dns'[`i']
-                tempfile chunk
+                loc d_name = `"`d`i''"'
                 cap qui import delimited "`email_results'_`i'.txt", clear delimiters("\n") varnames(nonames)
+                
+                loc valid = 0
+                loc ip_current = ""
+                
                 if !_rc & _N > 0 {
-                    loc d_current = ""
-                    loc ip_current = ""
-                    loc valid = 0
-                    
                     forval j = 1/`=_N' {
                         loc line = v1[`j']
                         if strpos("`line'", "Name:") {
-                            loc d_current = trim(subinstr("`line'", "Name:", "", 1))
+                            * do nothing for now, just identifying record
                         }
                         if strpos("`line'", "Address:") {
                             loc ip_current = trim(subinstr("`line'", "Address:", "", 1))
@@ -134,7 +138,7 @@ program define validemail
                         }
                     }
                     
-                    * Fallback if Name/Address not matched exactly but lookup succeeded
+                    * Fallback check for any success indicators if Name/Address not found
                     if `valid' == 0 {
                         count if strpos(v1, "NXDOMAIN")
                         if r(N) == 0 {
@@ -142,31 +146,21 @@ program define validemail
                             if r(N) > 0 loc valid = 1
                         }
                     }
-                    
-                    set obs `=_N+1'
-                    replace `dns' = "`d_name'" in L
-                    replace dns_valid = `valid' in L
-                    replace `ip' = "`ip_current'" in L
                 }
-                else {
-                    set obs `=_N+1'
-                    replace `dns' = "`d_name'" in L
-                    replace dns_valid = 0 in L
-                }
+                
+                * Post the result for this domain
+                post `memhold' (`"`d_name'"') (`"`ip_current'"') (`valid')
             }
-            keep `dns' `ip' dns_valid
-            drop if mi(`dns')
+            postclose `memhold'
+            
+            * Load the results and finalize the dns_list
+            use `master_dns', clear
             duplicates drop `dns', force
             save "`dns_list'", replace
         }
         restore
         
         * Merge back
-        capture confirm variable `dns'
-        if _rc {
-            * If dns var was dropped or renamed in the temp process, ensure it exists for merge
-            rename v1 `dns' // fallback if rename failed in the loop
-        }
         merge m:1 `dns' using "`dns_list'", nogenerate keep(master match)
         
         * Update Status
