@@ -43,7 +43,7 @@ validemail email, mx lowercase mergereport generate(status2) dns(domain2)
 list email status2 domain2 validated_ip validated_disposable, abbrev(20)
 
 * 5. Check specific results
-* gmail.com should be 2 (or 3 if we add it to disposable, but it's not)
+* gmail.com should be 2
 * nonexistent should be 1
 * mailinator should be 3
 * invalid-email should be 0
