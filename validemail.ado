@@ -112,6 +112,7 @@ program define validemail
             g dns_valid = 0
             
             forval i = 1/`n_domains' {
+                loc d_name = `dns'[`i']
                 tempfile chunk
                 cap qui import delimited "`email_results'_`i'.txt", clear delimiters("\n") varnames(nonames)
                 if !_rc & _N > 0 {
@@ -137,7 +138,6 @@ program define validemail
                     if `valid' == 0 {
                         count if strpos(v1, "NXDOMAIN")
                         if r(N) == 0 {
-                            * Check if there's any non-header info
                             count if _n > 2
                             if r(N) > 0 loc valid = 1
                         }
@@ -149,17 +149,24 @@ program define validemail
                     replace `ip' = "`ip_current'" in L
                 }
                 else {
-                    * File not found or empty
                     set obs `=_N+1'
                     replace `dns' = "`d_name'" in L
                     replace dns_valid = 0 in L
                 }
             }
+            keep `dns' `ip' dns_valid
+            drop if mi(`dns')
+            duplicates drop `dns', force
             save "`dns_list'", replace
         }
         restore
         
         * Merge back
+        capture confirm variable `dns'
+        if _rc {
+            * If dns var was dropped or renamed in the temp process, ensure it exists for merge
+            rename v1 `dns' // fallback if rename failed in the loop
+        }
         merge m:1 `dns' using "`dns_list'", nogenerate keep(master match)
         
         * Update Status

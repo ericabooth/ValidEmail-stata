@@ -1,0 +1,4 @@
+v 3
+d validemail: Email validation via Regex, DNS/MX Check, and Disposable Domain Detection
+d Eric A. Booth, eric.a.booth@gmail.com
+p validemail
