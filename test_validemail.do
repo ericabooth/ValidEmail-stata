@@ -29,11 +29,13 @@ end
 
 * 2. Run basic validation
 di _n(2) "{title:Test 1: Basic Validation}"
+cap drop validated_*
 validemail email, mergereport
 
 * 3. Run validation with MX check and lowercase
 di _n(2) "{title:Test 2: MX Check and Lowercase}"
-drop validated_*
+cap drop validated_*
+cap drop status2 domain2
 validemail email, mx lowercase mergereport generate(status2) dns(domain2)
 
 * 4. Display results
