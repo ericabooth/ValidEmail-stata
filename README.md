@@ -13,8 +13,9 @@
 ## Installation
 You can install `validemail` directly from GitHub in Stata:
 ```stata
-net install validemail, from("https://raw.githubusercontent.com/ericbooth/ValidEmail-stata/master/")
+net install validemail, from("https://raw.githubusercontent.com/ericabooth/ValidEmail-stata/main/")
 ```
+
 
 ## Syntax
 ```stata
