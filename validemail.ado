@@ -1,5 +1,5 @@
 *! validemail.ado  Email Validation via Regex, DNS/MX Check, and Disposable Domain Detection
-*! version 2.0.0  2024-06-13
+*! version 2.1.0  2026-06-13
 *! Eric A. Booth <eric.a.booth@gmail.com>
 *! 
 *! Syntax:  
