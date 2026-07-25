@@ -112,6 +112,7 @@ tab status2
 
 ## Authors
 **Eric A. Booth**  
+Sr Researcher, Texas 2036  
 eric.a.booth@gmail.com  
 [https://github.com/ericabooth/ValidEmail-stata](https://github.com/ericabooth/ValidEmail-stata)
 
