@@ -6,7 +6,7 @@ d validemail provides a multi-stage validation for email address variables.
 d It performs Regex format checks, Disposable email detection, 
 d and DNS/MX record verification.
 d
-d Requires: Stata 16.0 or newer
+d Requires: Stata 14.0 or newer
 d
 d Author: Eric A. Booth, Sr Researcher, Texas 2036
 d Support: eric.a.booth@gmail.com

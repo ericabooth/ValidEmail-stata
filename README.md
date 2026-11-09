@@ -29,6 +29,8 @@ validemail varname [, options]
 - `mergereport`: Show a summary table of results.
 - `dns(newvar)`: Save extracted domains.
 - `ip(newvar)`: Save the domain's first resolved address (blank on failure or with `mx`).
+- `disposable(newvar)`: Name the 0/1 flag for known disposable providers (Default: `validated_disposable`). The comparison ignores case.
+- `regex(string)`: Replace the default format pattern. The default rejects spaces inside the address and a local part or domain that starts or ends with a dot or has two dots in a row.
 
 ### How the DNS check decides
 A lookup passes only when `nslookup` returns an answer for the domain: an address under a `Name:` line for the default A lookup, or a `mail exchanger` line with `mx`. The lines that describe your own DNS server do not count, so NXDOMAIN, "can't find", "Non-existent domain" and "No answer" results get status 1. Domains with characters other than letters, digits, dots and hyphens are never passed to the shell.
@@ -57,11 +59,12 @@ validemail email, disposable(is_temp)
 tab is_temp
 ```
 
-###Test script
+### Test script
 ```stata
 *! test_validemail.do - Test script for validemail.ado
 *! Eric A. Booth
-*! 2024-06-13
+*! 2026-11-09 (format and disposable checks are asserted; DNS results
+*! depend on your network and are listed for inspection)
 
 clear
 set more off
@@ -112,9 +115,19 @@ list email status2 domain2 validated_ip validated_disposable, abbrev(20)
 
 di _n(2) "{title:Validation Successful if Statuses match expectations}"
 tab status2
+
+* 6. Network-independent checks (format, disposable flag, row order)
+assert status2 == 0 if inlist(email, "invalid-email", "bad@format@extra.com", "spaces in@email.com")
+assert status2 == 0 if inlist(email, "multiple..dots@gmail.com", ".startwithdot@test.com", "endwithdot.@test.com")
+assert status2 >= 1 if inlist(email, "valid.user@gmail.com", "user+tag@example.org", "CAPS@DOMAIN.COM")
+assert validated_disposable == 1 if inlist(email, "test@mailinator.com", "test@10minutemail.com")
+assert validated_disposable == 0 if !inlist(email, "test@mailinator.com", "test@10minutemail.com")
+assert email[1] == "valid.user@gmail.com" & email[14] == "test@10minutemail.com"
+di as res "ALL TESTS PASSED"
 ```
 
 ## Changelog
+- **2.2.1 (2026-11-09)**: Runs when the temporary-file folder has a space in its name (it stopped with `r(198)`). An address with a space inside is now invalid format instead of being squeezed shut and passed. The default pattern rejects leading, trailing, and doubled dots in the local part and domain. The disposable check ignores case.
 - **2.2.0 (2026-11-09)**: The resolver's own header no longer counts as a DNS pass, so nonexistent domains get status 1 and `mx` requires a mail-exchanger answer. `ip()` now holds the domain's address (it was always blank). A user variable named `dns_valid` is no longer dropped. Row order is preserved. Temporary files are removed with `erase` on every OS. Data with no valid-format address no longer stops with `r(2000)`.
 
 ## Authors

@@ -1,6 +1,7 @@
 *! test_validemail.do - Test script for validemail.ado
 *! Eric A. Booth
-*! 2024-06-13
+*! 2026-11-09 (format and disposable checks are asserted; DNS results
+*! depend on your network and are listed for inspection)
 
 clear
 set more off
@@ -51,3 +52,12 @@ list email status2 domain2 validated_ip validated_disposable, abbrev(20)
 
 di _n(2) "{title:Validation Successful if Statuses match expectations}"
 tab status2
+
+* 6. Network-independent checks (format, disposable flag, row order)
+assert status2 == 0 if inlist(email, "invalid-email", "bad@format@extra.com", "spaces in@email.com")
+assert status2 == 0 if inlist(email, "multiple..dots@gmail.com", ".startwithdot@test.com", "endwithdot.@test.com")
+assert status2 >= 1 if inlist(email, "valid.user@gmail.com", "user+tag@example.org", "CAPS@DOMAIN.COM")
+assert validated_disposable == 1 if inlist(email, "test@mailinator.com", "test@10minutemail.com")
+assert validated_disposable == 0 if !inlist(email, "test@mailinator.com", "test@10minutemail.com")
+assert email[1] == "valid.user@gmail.com" & email[14] == "test@10minutemail.com"
+di as res "ALL TESTS PASSED"

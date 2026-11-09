@@ -1,8 +1,16 @@
 *! validemail.ado  Email Validation via Regex, DNS/MX Check, and Disposable Domain Detection
-*! version 2.2.0  2026-11-09
+*! version 2.2.1  2026-11-09
 *! Eric A. Booth <eric.a.booth@gmail.com>
 *
 * Changelog
+*   2.2.1  2026-11-09  Temporary-file paths are quoted, so a temp folder with a
+*                      space no longer stops the run with r(198). Only leading
+*                      and trailing spaces are trimmed: an address with a space
+*                      inside is invalid format (it used to be squeezed shut and
+*                      pass). The default regex rejects a local part or domain
+*                      that starts or ends with a dot or has two dots in a row.
+*                      The disposable-domain check ignores case. Removed the
+*                      top-level program drop from the ado file.
 *   2.2.0  2026-11-09  DNS/MX parser rewritten: the resolver's own Server/Address
 *                      header no longer counts as a pass, so NXDOMAIN and
 *                      "can't find" domains get status 1; mx requires a
@@ -17,7 +25,6 @@
 *                      no valid-format address no longer stops with r(2000).
 *   2.1.1  2024-06-13  Previous release.
 
-cap program drop validemail
 program define validemail
     version 14.0
     syntax varlist(max=1) [,  GENerate(name) DNS(name) mx IP(name) DISPOSable(name) Mergereport regex(string) LOWercase]
@@ -39,14 +46,16 @@ program define validemail
 
     * Default Regex
     if `"`regex'"' == "" {
-        loc regex "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+        * dot-separated atoms on both sides of the @: no leading,
+        * trailing, or doubled dots
+        loc regex "^[a-zA-Z0-9_%+-]+(\.[a-zA-Z0-9_%+-]+)*@[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\.[a-zA-Z]{2,}$"
     }
 
     qui {
         * Clean input
         tempvar clean_email
+        * trim only: a space inside an address makes it invalid
         g `clean_email' = trim(`varlist')
-        replace `clean_email' = subinstr(`clean_email', " ", "", .)
         if "`lowercase'" != "" {
             replace `clean_email' = lower(`clean_email')
         }
@@ -71,7 +80,7 @@ program define validemail
     qui {
         loc d_list "mailinator.com 10minutemail.com guerrillamail.com temp-mail.org yopmail.com throwawaymail.com sharklasers.com getairmail.com maildrop.cc dispostable.com"
         foreach d in `d_list' {
-            replace `disposable' = 1 if `dns' == "`d'"
+            replace `disposable' = 1 if lower(`dns') == "`d'"
         }
     }
 
@@ -103,7 +112,7 @@ program define validemail
 
             tempname memhold
             tempfile master_dns
-            postfile `memhold' str255 `dns' str255 `ip' byte `dnsok' using `master_dns', replace
+            postfile `memhold' str255 `dns' str255 `ip' byte `dnsok' using `"`master_dns'"', replace
 
             forval i = 1/`n_domains' {
                 loc d_name `"`d`i''"'
@@ -134,7 +143,7 @@ program define validemail
             postclose `memhold'
 
             * Load the results and save to dns_list
-            use `master_dns', clear
+            use `"`master_dns'"', clear
             duplicates drop `dns', force
             save "`dns_list'", replace
         }
