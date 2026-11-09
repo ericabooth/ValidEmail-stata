@@ -1,6 +1,21 @@
 *! validemail.ado  Email Validation via Regex, DNS/MX Check, and Disposable Domain Detection
-*! version 2.1.1  2024-06-13
+*! version 2.2.0  2026-11-09
 *! Eric A. Booth <eric.a.booth@gmail.com>
+*
+* Changelog
+*   2.2.0  2026-11-09  DNS/MX parser rewritten: the resolver's own Server/Address
+*                      header no longer counts as a pass, so NXDOMAIN and
+*                      "can't find" domains get status 1; mx requires a
+*                      "mail exchanger" answer. ip() now holds the domain's first
+*                      A-record address (was always blank). The DNS flag is a
+*                      tempvar, so a user variable named dns_valid is no longer
+*                      dropped or misread. Row order is preserved. Temporary
+*                      nslookup files are removed with erase (the old shell rm
+*                      was Unix-only and never matched). Domains with
+*                      characters other than letters, digits, dots and hyphens
+*                      are not passed to the shell and get status 1. Data with
+*                      no valid-format address no longer stops with r(2000).
+*   2.1.1  2024-06-13  Previous release.
 
 cap program drop validemail
 program define validemail
@@ -47,8 +62,7 @@ program define validemail
         replace `dns' = ustrregexs(1) if ustrregexm(`clean_email', "@(.*)$")
         replace `dns' = "" if `generate' == 0
         
-        * Initialize IP and Disposable
-        g `ip' = ""
+        * Initialize Disposable (ip() is created by the DNS merge below)
         g `disposable' = 0
     }
 
@@ -64,15 +78,19 @@ program define validemail
     * DNS / MX Check
     tempfile email_results
     tempfile dns_list
-    
+    tempvar dnsok order
+    loc n_skipped = 0
+    loc n_noout = 0
+
     qui {
+        g double `order' = _n
         preserve
         keep if `generate' == 1
         keep `dns'
-        duplicates drop `dns', force
-        
+        if _N > 0 duplicates drop `dns', force
+
         loc n_domains = _N
-        
+
         if `n_domains' > 0 {
             * 1. Store domain names in locals to survive 'clear'
             forval i = 1/`n_domains' {
@@ -80,80 +98,69 @@ program define validemail
             }
 
             noi di as text "Checking DNS/MX for `n_domains' unique domains..."
-            
-            * 2. Run nslookup for each domain
+            loc type = cond("`mx'" != "", "-type=MX", "")
+            loc mxflag = ("`mx'" != "")
+
+            tempname memhold
+            tempfile master_dns
+            postfile `memhold' str255 `dns' str255 `ip' byte `dnsok' using `master_dns', replace
+
             forval i = 1/`n_domains' {
-                loc d_name = `"`d`i''"'
-                loc type = cond("`mx'" != "", "-type=MX", "")
-                
-                * Use shell command with redirection
-                qui !nslookup `type' `d_name' > "`email_results'_`i'.txt"
-                
+                loc d_name `"`d`i''"'
+                loc resfile `"`email_results'_`i'.txt"'
+                loc ve_valid = 0
+                loc ve_ip ""
+
+                * Only plain host names reach the shell (letters, digits,
+                * dots, hyphens; first character a letter or digit).
+                if ustrregexm(`"`d_name'"', "^[A-Za-z0-9][A-Za-z0-9.-]*$") {
+                    * nslookup is an external program, so a shell call is required
+                    cap erase `"`resfile'"'
+                    qui !nslookup `type' `d_name' > "`resfile'" 2>&1
+                    mata: _validemail_parse(st_local("resfile"), `mxflag')
+                    if `ve_out' == 0 loc ++n_noout
+                    cap erase `"`resfile'"'
+                }
+                else loc ++n_skipped
+
+                post `memhold' (`"`d_name'"') (`"`ve_ip'"') (`ve_valid')
+
                 * Progress
                 if mod(`i', 5) == 0 | `i' == `n_domains' {
                     noi di as text "." _continue
                 }
             }
             noi di ""
-            
-            * 3. Process results into a temp file using postfile
-            tempname memhold
-            tempfile master_dns
-            * Use str240 to be safe for domain and IP
-            postfile `memhold' str240 `dns' str240 `ip' dns_valid using `master_dns', replace
-
-            forval i = 1/`n_domains' {
-                loc d_name = `"`d`i''"'
-                cap qui import delimited "`email_results'_`i'.txt", clear delimiters("\n") varnames(nonames)
-                
-                loc valid = 0
-                loc ip_current = ""
-                
-                if !_rc & _N > 0 {
-                    forval j = 1/`=_N' {
-                        loc line = v1[`j']
-                        if strpos("`line'", "Address:") {
-                            loc ip_current = trim(subinstr("`line'", "Address:", "", 1))
-                            * Some nslookup outputs include #port
-                            if strpos("`ip_current'", "#") loc ip_current = trim(word("`ip_current'", 1))
-                            loc valid = 1
-                        }
-                        if strpos("`line'", "mail exchanger") {
-                            loc valid = 1
-                        }
-                    }
-                    
-                    * Fallback if no specific tags found but lookup wasn't an error
-                    if `valid' == 0 {
-                        count if strpos(v1, "NXDOMAIN")
-                        if r(N) == 0 {
-                            count if _n > 2
-                            if r(N) > 0 loc valid = 1
-                        }
-                    }
-                }
-                
-                * Post the result for this domain
-                post `memhold' (`"`d_name'"') (`"`ip_current'"') (`valid')
-            }
             postclose `memhold'
-            
+
             * Load the results and save to dns_list
             use `master_dns', clear
             duplicates drop `dns', force
             save "`dns_list'", replace
         }
         restore
-        
+
         * Merge results back to main dataset
         if `n_domains' > 0 {
             merge m:1 `dns' using "`dns_list'", nogenerate keep(master match)
-            
+            sort `order'
+
             * Update Status
-            replace `generate' = 2 if `generate' == 1 & dns_valid == 1
+            replace `generate' = 2 if `generate' == 1 & `dnsok' == 1
             replace `generate' = 3 if `generate' == 2 & `disposable' == 1
-            drop dns_valid
+            drop `dnsok'
+            compress `ip'
         }
+        else g `ip' = ""
+        order `ip', before(`disposable')
+        drop `order'
+    }
+
+    if `n_skipped' > 0 {
+        di as text "Note: `n_skipped' domain(s) contain characters other than letters, digits, dots and hyphens; not looked up (status 1)."
+    }
+    if `n_noout' > 0 {
+        di as error "Warning: nslookup returned no output for `n_noout' domain(s). Check that nslookup is installed and on your PATH."
     }
 
     * Report results
@@ -181,6 +188,60 @@ program define validemail
         tab `generate'
     }
 
-    * Cleanup temporary files
-    cap shell rm "`email_results'_*.txt"
+end
+
+* Parse one nslookup result file.
+* Returns locals ve_valid (1 = lookup passed), ve_ip (first answer address,
+* A lookups only) and ve_out (1 = file had any output).
+* The resolver header (Server:/Address:) is never an answer: an A pass needs
+* an Address(es): line after a Name: line in the same block. An MX pass needs
+* a "mail exchanger" line. NXDOMAIN, "can't find" and "Non-existent domain"
+* produce no such lines, so they fail.
+mata:
+void _validemail_parse(string scalar fn, real scalar mx)
+{
+    real scalar fh, valid, inans, nlines, c
+    string scalar line, low, val, ip
+    string matrix eof
+
+    valid = 0
+    inans = 0
+    nlines = 0
+    ip = ""
+    eof = J(0, 0, "")
+    if (fileexists(fn)) {
+        fh = _fopen(fn, "r")
+        if (fh >= 0) {
+            while ((line = fget(fh)) != eof) {
+                line = strtrim(subinstr(line, char(13), ""))
+                if (line == "") {
+                    inans = 0
+                    continue
+                }
+                nlines++
+                low = strlower(line)
+                if (mx) {
+                    if (strpos(low, "mail exchanger")) valid = 1
+                    continue
+                }
+                if (substr(low, 1, 5) == "name:") {
+                    inans = 1
+                    continue
+                }
+                if (inans & (substr(low, 1, 8) == "address:" | substr(low, 1, 10) == "addresses:")) {
+                    c = strpos(line, ":")
+                    val = strtrim(substr(line, c + 1, .))
+                    if (val != "") {
+                        valid = 1
+                        if (ip == "") ip = val
+                    }
+                }
+            }
+            fclose(fh)
+        }
+    }
+    st_local("ve_valid", strofreal(valid))
+    st_local("ve_ip", ip)
+    st_local("ve_out", strofreal(nlines > 0))
+}
 end

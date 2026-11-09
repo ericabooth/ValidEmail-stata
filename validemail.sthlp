@@ -1,5 +1,5 @@
 {smcl}
-{* Jun 2024} {...}
+{* *! version 2.2.0  09nov2026}{...}
 {hline}
 help for {hi:validemail}
 {hline}
@@ -19,7 +19,7 @@ help for {hi:validemail}
 {synoptline}
 {synopt:{opt gen:erate(newvar)}}New variable for validation status codes (Default: validated_status){p_end}
 {synopt:{opt dns(newvar)}}New variable for extracted domains (Default: validated_domain){p_end}
-{synopt:{opt ip(newvar)}}New variable for server IP addresses (Default: validated_ip){p_end}
+{synopt:{opt ip(newvar)}}New variable for the domain's first resolved address (Default: validated_ip){p_end}
 {synopt:{opt dispos:able(newvar)}}New variable indicating disposable email domains (Default: validated_disposable){p_end}
 {synopt:{opt mx}}Check for MX (Mail Exchanger) records instead of simple A records{p_end}
 {synopt:{opt low:ercase}}Convert emails to lowercase before validation{p_end}
@@ -36,6 +36,8 @@ help for {hi:validemail}
 {p 4 8 2}2. {bf:Disposable Check}: Compares domains against a list of known disposable email providers (e.g., mailinator.com).{p_end}
 {p 4 8 2}3. {bf:DNS/MX Lookup}: Uses {cmd:nslookup} to verify the domain exists and can receive mail (if {cmd:mx} is specified).{p_end}
 
+{p}A lookup passes only when {cmd:nslookup} returns an answer for the domain: an address line under a {cmd:Name:} line for the default A lookup, or a {cmd:mail exchanger} line with {opt mx}. The Server/Address lines that describe your own DNS server do not count. Domains that return NXDOMAIN, "can't find", "Non-existent domain" or "No answer" get status 1. Domains that contain characters other than letters, digits, dots and hyphens (possible only with a custom {opt regex()}) are not passed to the shell and get status 1. If {cmd:nslookup} produces no output at all, {cmd:validemail} prints a warning.{p_end}
+
 {title:Status Codes}
 
 {p}The {opt generate()} variable contains the following codes:{p_end}
@@ -50,6 +52,8 @@ help for {hi:validemail}
 {p 0 4}{opt gen:erate(newvar)} specifies the name of the new variable to hold the validation status. {p_end}
 
 {p 0 4}{opt dns(newvar)} specifies the name of the new variable to hold the domain extracted from the email. {p_end}
+
+{p 0 4}{opt ip(newvar)} specifies the name of the new variable to hold the first address that {cmd:nslookup} returns for the domain in its answer section. The address of your own DNS server is never stored. {opt ip()} is blank when the lookup fails and when {opt mx} is specified (MX answers list mail servers, not addresses). {p_end}
 
 {p 0 4}{opt mx} instructs the command to specifically look for MX (Mail Exchanger) records. This is a more accurate way to verify if a domain is configured to receive emails. {p_end}
 
@@ -70,6 +74,11 @@ help for {hi:validemail}
 
 {p 4 8 2}3. Using a custom regex:{p_end}
 {p 8 12 2}{cmd:. validemail email, regex("^[a-z]+@[a-z]+\.com$")}{p_end}
+
+
+{title:Changes}
+
+{p 4 8 2}2.2.0 (09nov2026): the resolver header no longer counts as a DNS pass, so nonexistent domains get status 1; {opt ip()} now holds the domain's address; a user variable named {cmd:dns_valid} is left alone; row order is preserved; temporary files are removed on all systems; data with no valid-format address no longer stops with an error.{p_end}
 
 
 {title:Author}

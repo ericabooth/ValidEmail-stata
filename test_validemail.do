@@ -6,7 +6,8 @@ clear
 set more off
 
 * Force Stata to use the local version in this folder FIRST
-cap adopath ++ "/Users/ebooth/Documents/GitHub/ValidEmail-stata"
+* (run this file from the repository folder)
+cap adopath ++ "`c(pwd)'"
 cap program drop validemail
 which validemail
 
@@ -43,7 +44,7 @@ validemail email, mx lowercase mergereport generate(status2) dns(domain2)
 list email status2 domain2 validated_ip validated_disposable, abbrev(20)
 
 * 5. Check specific results
-* gmail.com should be 2
+* gmail.com should be 2 (validated_ip blank here because mx was used)
 * nonexistent should be 1
 * mailinator should be 3
 * invalid-email should be 0

@@ -28,7 +28,10 @@ validemail varname [, options]
 - `lowercase`: Convert emails to lowercase before checking.
 - `mergereport`: Show a summary table of results.
 - `dns(newvar)`: Save extracted domains.
-- `ip(newvar)`: Save resolved IP addresses.
+- `ip(newvar)`: Save the domain's first resolved address (blank on failure or with `mx`).
+
+### How the DNS check decides
+A lookup passes only when `nslookup` returns an answer for the domain: an address under a `Name:` line for the default A lookup, or a `mail exchanger` line with `mx`. The lines that describe your own DNS server do not count, so NXDOMAIN, "can't find", "Non-existent domain" and "No answer" results get status 1. Domains with characters other than letters, digits, dots and hyphens are never passed to the shell.
 
 ### Status Codes
 - **0**: Invalid format (Regex failed).
@@ -64,7 +67,8 @@ clear
 set more off
 
 * Force Stata to use the local version in this folder FIRST
-cap adopath ++ "/Users/ebooth/Documents/GitHub/ValidEmail-stata"
+* (run this file from the repository folder)
+cap adopath ++ "`c(pwd)'"
 cap program drop validemail
 which validemail
 
@@ -101,7 +105,7 @@ validemail email, mx lowercase mergereport generate(status2) dns(domain2)
 list email status2 domain2 validated_ip validated_disposable, abbrev(20)
 
 * 5. Check specific results
-* gmail.com should be 2
+* gmail.com should be 2 (validated_ip blank here because mx was used)
 * nonexistent should be 1
 * mailinator should be 3
 * invalid-email should be 0
@@ -109,6 +113,9 @@ list email status2 domain2 validated_ip validated_disposable, abbrev(20)
 di _n(2) "{title:Validation Successful if Statuses match expectations}"
 tab status2
 ```
+
+## Changelog
+- **2.2.0 (2026-11-09)**: The resolver's own header no longer counts as a DNS pass, so nonexistent domains get status 1 and `mx` requires a mail-exchanger answer. `ip()` now holds the domain's address (it was always blank). A user variable named `dns_valid` is no longer dropped. Row order is preserved. Temporary files are removed with `erase` on every OS. Data with no valid-format address no longer stops with `r(2000)`.
 
 ## Authors
 **Eric A. Booth**  
